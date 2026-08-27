@@ -28,10 +28,10 @@ def seed_database():
                 slot_date = today + timedelta(days=day_offset)
 
                 # Skip weekends.
-                if slot_date.weekday() >= 5:
+                if slot_date.weekday() == 6:
                     continue
 
-                for hour in (9, 10, 11, 13, 14, 15):
+                for hour in range(8, 18):
                     start_time = datetime.combine(
                         slot_date,
                         datetime.min.time(),

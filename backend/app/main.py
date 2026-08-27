@@ -274,9 +274,13 @@ def list_patient_appointments(
         502: {"description": "LLM API request failed"},
     },
 )
-def chat(request: ChatRequest):
+def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+):
     try:
         message, interaction_id = generate_chat_response(
+            db=db,
             message=request.message,
             previous_interaction_id=request.previous_interaction_id,
         )
