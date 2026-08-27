@@ -4,11 +4,13 @@ import smtplib
 import logging
 from email.message import EmailMessage
 
+from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
 from app.models import EmergencyEscalation, Patient
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 
 LIFE_THREATENING_PHRASES = (
@@ -104,6 +106,9 @@ def notify_staff(
     recipient = os.getenv("STAFF_EMAIL")
     smtp_host = os.getenv("SMTP_HOST")
     if not recipient or not smtp_host:
+        logger.warning(
+            "Staff emergency email was not sent: STAFF_EMAIL or SMTP_HOST is missing"
+        )
         return False
 
     patient_details = "No matching patient record was found."

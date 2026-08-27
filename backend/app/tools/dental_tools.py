@@ -11,7 +11,7 @@ from app.services.scheduling import (
     get_patient_appointments,
     reschedule_appointment,
 )
-from app.models import Patient
+from app.models import EmergencyEscalation, Patient
 from app.services.emergencies import create_emergency_escalation, notify_staff
 
 FIND_AVAILABLE_SLOTS_TOOL = {
@@ -446,11 +446,34 @@ def run_book_appointment(
         emergency_summary=arguments.get("emergency_summary"),
     )
 
+    if appointment.appointment_type == "emergency":
+        emergency_summary = (
+            arguments.get("emergency_summary")
+            or db.query(EmergencyEscalation.summary)
+            .filter(EmergencyEscalation.patient_id == appointment.patient_id)
+            .order_by(EmergencyEscalation.id.desc())
+            .scalar()
+            or user_message
+        )
+        appointment.emergency_summary = emergency_summary
+        db.commit()
+        db.refresh(appointment)
+        notify_staff(
+            summary=emergency_summary,
+            contact_phone=appointment.patient.phone,
+            patient=appointment.patient,
+            appointment_details=(
+                "Emergency appointment booked for "
+                f"{appointment.slot.start_time.isoformat()}."
+            ),
+        )
+
     return {
         "success": True,
         "appointment_id": appointment.id,
         "status": appointment.status,
         "appointment_type": appointment.appointment_type,
+        "emergency_summary": appointment.emergency_summary,
         "start_time": appointment.slot.start_time.isoformat(),
         "end_time": appointment.slot.end_time.isoformat(),
     } 

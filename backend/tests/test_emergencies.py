@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EmergencyEscalation
 from app.tools.dental_tools import run_escalate_emergency
+from app.tools.dental_tools import run_book_appointment
 from app.services.emergencies import (
     create_emergency_escalation,
     extract_phone_number,
@@ -74,6 +75,8 @@ def test_notify_staff_sends_patient_context(monkeypatch, patient):
 
     monkeypatch.setenv("STAFF_EMAIL", "staff@example.com")
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.delenv("SMTP_USERNAME", raising=False)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
     monkeypatch.setattr("app.services.emergencies.smtplib.SMTP", FakeSMTP)
 
     assert notify_staff("Severe tooth pain", patient=patient) is True
@@ -182,3 +185,39 @@ def test_emergency_tool_emails_unknown_patient_details(
     assert sent_messages[0]["contact_phone"] == "234-234-2345"
     assert sent_messages[0]["patient"] is None
     assert db.query(EmergencyEscalation).count() == 1
+
+
+def test_emergency_booking_notifies_staff_and_stores_notes(
+    db: Session,
+    patient,
+    slots,
+    monkeypatch,
+):
+    notifications = []
+    monkeypatch.setattr(
+        "app.tools.dental_tools.notify_staff",
+        lambda **kwargs: notifications.append(kwargs) or True,
+    )
+    create_emergency_escalation(
+        db,
+        summary="My teeth have been hurting and I need an emergency appointment.",
+        patient_id=patient.id,
+        contact_phone=patient.phone,
+    )
+
+    result = run_book_appointment(
+        db,
+        {
+            "patient_id": patient.id,
+            "slot_id": slots[2].id,
+            "appointment_type": "emergency",
+        },
+        "Yes, please book it.",
+    )
+
+    assert result["appointment_type"] == "emergency"
+    assert result["emergency_summary"] == (
+        "My teeth have been hurting and I need an emergency appointment."
+    )
+    assert len(notifications) == 1
+    assert notifications[0]["patient"] is patient
