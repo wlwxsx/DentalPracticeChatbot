@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from google import genai
 from sqlalchemy.orm import Session
+from datetime import date
 
 from app.tools.dental_tools import TOOLS, execute_tool
 from app.services.emergencies import (
@@ -36,9 +37,15 @@ Ask for a contact number only if doing so would not delay emergency care.
 The dental practice is open Monday through Saturday from 8:00 AM to 6:00 PM
 and closed on Sundays.
 
-Use the availability tool when the patient asks about open appointments.
+For every availability question, always use the availability tool when the patient asks about open appointments. 
 If the patient does not provide a sufficiently clear date range, ask a
 clarifying question instead of guessing.
+Never guess whether the schedule is open, full, or unavailable.
+
+Only say that no appointments are available when the availability tool returns
+zero results. Do not claim that future days are fully booked unless you
+searched those specific dates using the tool. When presenting appointment dates, use the day_of_week and date returned by
+the availability tool. Never calculate or guess the weekday yourself.
 
 Before managing an existing patient's appointments, verify them using their
 phone number and date of birth. Do not ask for or expose internal patient IDs.
@@ -99,9 +106,18 @@ def generate_chat_response(
     #TODO: Add a local rule response for non-life-threatening emergencies that don't require escalation to 911.
     #TODO: Notification Emailing system with patient info to staff for follow-up on non-life-threatening emergencies.
 
+    today = date.today().isoformat()
+
+    runtime_instruction = (
+        f"{SYSTEM_INSTRUCTION}\n\n"
+        f"The current local date is {today}. "
+        "Interpret relative dates such as today, tomorrow, and next week "
+        "using this date."
+    )
+    
     request = {
         "model": MODEL,
-        "system_instruction": SYSTEM_INSTRUCTION,
+        "system_instruction": runtime_instruction,
         "input": message,
         "tools": TOOLS,
     }

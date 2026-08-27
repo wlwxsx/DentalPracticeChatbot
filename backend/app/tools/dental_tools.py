@@ -269,6 +269,8 @@ def run_find_available_slots(
         "slots": [
             {
                 "id": slot.id,
+                "day_of_week": slot.start_time.strftime("%A"),
+                "date": slot.start_time.date().isoformat(),
                 "start_time": slot.start_time.isoformat(),
                 "end_time": slot.end_time.isoformat(),
                 "appointment_type": slot.appointment_type,

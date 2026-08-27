@@ -1,22 +1,91 @@
-# Python
-backend/.venv/
-backend/__pycache__/
-backend/app/__pycache__/
-backend/app/services/__pycache__/
-*.pyc
-
-# Local database
-backend/dental_practice.db
-
-# Environment variables
+# --------------------
+# Environment variables and secrets
+# --------------------
 .env
+.env.*
+!.env.example
 backend/.env
+frontend/.env
 
-# Frontend
+# --------------------
+# Python
+# --------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+backend/.venv/
+
+# Python tooling and test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --------------------
+# Local databases
+# --------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# --------------------
+# Node / React / Vite
+# --------------------
+node_modules/
 frontend/node_modules/
 frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Editors and OS
+# Vite environment files
+frontend/.env.*
+!frontend/.env.example
+
+# --------------------
+# Editors
+# --------------------
 .vscode/
+.idea/
+*.code-workspace
+
+# --------------------
+# Operating systems
+# --------------------
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# --------------------
+# Temporary files
+# --------------------
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# --------------------
+# Test and local artifacts
+# --------------------
+test-output/
+screenshots/
