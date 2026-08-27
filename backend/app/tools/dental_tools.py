@@ -37,7 +37,7 @@ FIND_AVAILABLE_SLOTS_TOOL = {
             },
             "appointment_type": {
                 "type": "string",
-                "description": "Appointment type, currently general.",
+                "description": "Appointment type, default is general.",
             },
         },
         "required": [

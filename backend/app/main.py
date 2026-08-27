@@ -26,7 +26,6 @@ class BookingRequest(BaseModel):
     patient_id: int
     slot_id: int
 
-
 class RescheduleRequest(BaseModel):
     new_slot_id: int
 

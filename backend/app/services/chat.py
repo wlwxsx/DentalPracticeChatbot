@@ -15,6 +15,7 @@ from app.services.emergencies import (
 
 load_dotenv()
 
+#TODO: Allow multiple llms for testing and fallback. For example, if Gemini is down, use DeepSeek or OpenAI.
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 

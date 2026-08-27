@@ -6,7 +6,10 @@ from app.models import Patient
 
 
 def normalize_phone(phone: str) -> str:
-    return "".join(character for character in phone if character.isdigit())
+    digits = "".join(character for character in phone if character.isdigit())
+    if len(digits) == 11 and digits.startswith("1"):
+        return digits[1:]
+    return digits
 
 
 def create_patient(
