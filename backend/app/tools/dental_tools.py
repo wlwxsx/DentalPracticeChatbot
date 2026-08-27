@@ -8,8 +8,8 @@ from app.services.scheduling import (
     cancel_appointment,
     find_available_slots,
     get_patient_appointments,
+    reschedule_appointment,
 )
-
 
 FIND_AVAILABLE_SLOTS_TOOL = {
     "type": "function",
@@ -145,12 +145,44 @@ CANCEL_APPOINTMENT_TOOL = {
     },
 }
 
+RESCHEDULE_APPOINTMENT_TOOL = {
+    "type": "function",
+    "name": "reschedule_appointment",
+    "description": (
+        "Move a verified patient's scheduled appointment to a new available "
+        "slot. Only call after the patient explicitly confirms the change."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "patient_id": {
+                "type": "integer",
+                "description": "Internal verified patient ID.",
+            },
+            "appointment_id": {
+                "type": "integer",
+                "description": "Internal appointment ID.",
+            },
+            "new_slot_id": {
+                "type": "integer",
+                "description": "Internal ID of the newly selected slot.",
+            },
+        },
+        "required": [
+            "patient_id",
+            "appointment_id",
+            "new_slot_id",
+        ],
+    },
+}
+
 TOOLS = [
     FIND_AVAILABLE_SLOTS_TOOL,
     VERIFY_PATIENT_TOOL,
     BOOK_APPOINTMENT_TOOL,
     LIST_APPOINTMENTS_TOOL,
     CANCEL_APPOINTMENT_TOOL,
+    RESCHEDULE_APPOINTMENT_TOOL
 ]
 
 
@@ -320,6 +352,69 @@ def run_cancel_appointment(
         "end_time": cancelled.slot.end_time.isoformat(),
     }
     
+def run_reschedule_appointment(
+    db: Session,
+    arguments: dict,
+    user_message: str,
+) -> dict:
+    normalized_message = user_message.lower()
+
+    explicitly_confirmed = any(
+        phrase in normalized_message
+        for phrase in (
+            "yes",
+            "confirm",
+            "reschedule it",
+            "go ahead",
+            "yes please",
+        )
+    )
+
+    if not explicitly_confirmed:
+        raise ValueError(
+            "The appointment has not been rescheduled. "
+            "Ask the patient to explicitly confirm the new date and time."
+        )
+
+    patient_appointments = get_patient_appointments(
+        db=db,
+        patient_id=arguments["patient_id"],
+    )
+
+    appointment = next(
+        (
+            item
+            for item in patient_appointments
+            if item.id == arguments["appointment_id"]
+            and item.status == "scheduled"
+        ),
+        None,
+    )
+
+    if appointment is None:
+        raise ValueError(
+            "That scheduled appointment does not belong to this patient."
+        )
+
+    old_start_time = appointment.slot.start_time
+    old_end_time = appointment.slot.end_time
+
+    updated = reschedule_appointment(
+        db=db,
+        appointment_id=appointment.id,
+        new_slot_id=arguments["new_slot_id"],
+    )
+
+    return {
+        "success": True,
+        "status": updated.status,
+        "old_start_time": old_start_time.isoformat(),
+        "old_end_time": old_end_time.isoformat(),
+        "new_start_time": updated.slot.start_time.isoformat(),
+        "new_end_time": updated.slot.end_time.isoformat(),
+    }
+    
+    
     
 def execute_tool(
     db: Session,
@@ -355,6 +450,12 @@ def execute_tool(
 
         if tool_name == "cancel_appointment":
             return run_cancel_appointment(
+                db=db,
+                arguments=arguments,
+                user_message=user_message,
+            )
+        if tool_name == "reschedule_appointment":
+            return run_reschedule_appointment(
                 db=db,
                 arguments=arguments,
                 user_message=user_message,

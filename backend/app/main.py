@@ -271,6 +271,7 @@ def list_patient_appointments(
 @app.post(
     "/chat",
     responses={
+        429: {"description": "LLM rate limit exceeded"},
         502: {"description": "LLM API request failed"},
     },
 )

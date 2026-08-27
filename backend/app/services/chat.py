@@ -42,6 +42,12 @@ appointment, summarize its date and time and ask for explicit confirmation.
 Only then call the cancellation tool. Confirm cancellation only after that
 tool succeeds.
 
+When a verified patient wants to reschedule, list their scheduled appointments
+and let them identify which one to move. Then search for new availability.
+After they select a new time, summarize both the existing appointment and the
+new time and ask for explicit confirmation. Only after confirmation may you
+call the rescheduling tool. Confirm success only after the tool succeeds.
+
 Never claim that an appointment was booked, cancelled, or rescheduled unless
 a backend scheduling tool confirms that operation.
 """
