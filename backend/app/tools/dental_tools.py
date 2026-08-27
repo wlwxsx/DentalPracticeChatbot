@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 from app.services.patients import verify_patient
 from app.services.scheduling import (
     book_appointment,
+    cancel_appointment,
     find_available_slots,
+    get_patient_appointments,
 )
 
 
@@ -101,10 +103,54 @@ BOOK_APPOINTMENT_TOOL = {
     },
 }
 
+LIST_APPOINTMENTS_TOOL = {
+    "type": "function",
+    "name": "list_patient_appointments",
+    "description": (
+        "List a verified patient's scheduled dental appointments."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "patient_id": {
+                "type": "integer",
+                "description": (
+                    "Internal ID returned by successful patient verification."
+                ),
+            },
+        },
+        "required": ["patient_id"],
+    },
+}
+
+
+CANCEL_APPOINTMENT_TOOL = {
+    "type": "function",
+    "name": "cancel_appointment",
+    "description": (
+        "Cancel a selected appointment belonging to a verified patient. "
+        "Only call after the patient explicitly confirms cancellation."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "patient_id": {
+                "type": "integer",
+            },
+            "appointment_id": {
+                "type": "integer",
+            },
+        },
+        "required": ["patient_id", "appointment_id"],
+    },
+}
+
 TOOLS = [
     FIND_AVAILABLE_SLOTS_TOOL,
     VERIFY_PATIENT_TOOL,
     BOOK_APPOINTMENT_TOOL,
+    LIST_APPOINTMENTS_TOOL,
+    CANCEL_APPOINTMENT_TOOL,
 ]
 
 
@@ -189,6 +235,92 @@ def run_book_appointment(
         "end_time": appointment.slot.end_time.isoformat(),
     }
     
+    
+def run_list_patient_appointments(
+    db: Session,
+    arguments: dict,
+) -> dict:
+    appointments = get_patient_appointments(
+        db=db,
+        patient_id=arguments["patient_id"],
+    )
+
+    scheduled = [
+        appointment
+        for appointment in appointments
+        if appointment.status == "scheduled"
+    ]
+
+    return {
+        "appointments": [
+            {
+                "appointment_id": appointment.id,
+                "appointment_type": appointment.appointment_type,
+                "start_time": appointment.slot.start_time.isoformat(),
+                "end_time": appointment.slot.end_time.isoformat(),
+            }
+            for appointment in scheduled
+        ]
+    }
+
+
+def run_cancel_appointment(
+    db: Session,
+    arguments: dict,
+    user_message: str,
+) -> dict:
+    normalized_message = user_message.lower()
+
+    explicitly_confirmed = any(
+        phrase in normalized_message
+        for phrase in (
+            "yes",
+            "confirm",
+            "cancel it",
+            "go ahead",
+            "yes please",
+        )
+    )
+
+    if not explicitly_confirmed:
+        raise ValueError(
+            "The appointment has not been cancelled. "
+            "Ask the patient to explicitly confirm the cancellation."
+        )
+
+    patient_appointments = get_patient_appointments(
+        db=db,
+        patient_id=arguments["patient_id"],
+    )
+
+    appointment = next(
+        (
+            item
+            for item in patient_appointments
+            if item.id == arguments["appointment_id"]
+            and item.status == "scheduled"
+        ),
+        None,
+    )
+
+    if appointment is None:
+        raise ValueError(
+            "That scheduled appointment does not belong to this patient."
+        )
+
+    cancelled = cancel_appointment(
+        db=db,
+        appointment_id=appointment.id,
+    )
+
+    return {
+        "success": True,
+        "status": cancelled.status,
+        "start_time": cancelled.slot.start_time.isoformat(),
+        "end_time": cancelled.slot.end_time.isoformat(),
+    }
+    
+    
 def execute_tool(
     db: Session,
     tool_name: str,
@@ -214,6 +346,19 @@ def execute_tool(
                 arguments=arguments,
                 user_message=user_message,
         )
+            
+        if tool_name == "list_patient_appointments":
+            return run_list_patient_appointments(
+                db=db,
+                arguments=arguments,
+            )
+
+        if tool_name == "cancel_appointment":
+            return run_cancel_appointment(
+                db=db,
+                arguments=arguments,
+                user_message=user_message,
+            )
 
         return {
             "success": False,
