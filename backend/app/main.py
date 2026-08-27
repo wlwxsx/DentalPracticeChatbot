@@ -13,12 +13,18 @@ from app import models
 
 from app.services.scheduling import (
     book_appointment,
+    cancel_appointment,
     find_available_slots,
+    reschedule_appointment,
 )
 
 class BookingRequest(BaseModel):
     patient_id: int
     slot_id: int
+
+
+class RescheduleRequest(BaseModel):
+    new_slot_id: int
     
 Base.metadata.create_all(bind=engine)
 
@@ -79,6 +85,67 @@ def create_appointment(
             db=db,
             patient_id=request.patient_id,
             slot_id=request.slot_id,
+        )
+
+        return {
+            "id": appointment.id,
+            "patient_id": appointment.patient_id,
+            "slot_id": appointment.slot_id,
+            "appointment_type": appointment.appointment_type,
+            "status": appointment.status,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+@app.patch(
+    "/appointments/{appointment_id}/cancel",
+    responses={
+        400: {"description": "Appointment cannot be cancelled"},
+    },
+)
+def cancel_existing_appointment(
+    appointment_id: int,
+    db: Session = Depends(get_db),
+):
+    try:
+        appointment = cancel_appointment(
+            db=db,
+            appointment_id=appointment_id,
+        )
+
+        return {
+            "id": appointment.id,
+            "patient_id": appointment.patient_id,
+            "slot_id": appointment.slot_id,
+            "status": appointment.status,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+@app.patch(
+    "/appointments/{appointment_id}/reschedule",
+    responses={
+        400: {"description": "Appointment cannot be rescheduled"},
+    },
+)
+def reschedule_existing_appointment(
+    appointment_id: int,
+    request: RescheduleRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        appointment = reschedule_appointment(
+            db=db,
+            appointment_id=appointment_id,
+            new_slot_id=request.new_slot_id,
         )
 
         return {

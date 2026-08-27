@@ -32,9 +32,8 @@ class Availability(Base):
     appointment_type: Mapped[str] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default="available")
 
-    appointment: Mapped["Appointment | None"] = relationship(
+    appointments: Mapped[list["Appointment"]] = relationship(
         back_populates="slot",
-        uselist=False,
     )
 
 
@@ -45,7 +44,6 @@ class Appointment(Base):
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
     slot_id: Mapped[int] = mapped_column(
         ForeignKey("availability.id"),
-        unique=True,
     )
     appointment_type: Mapped[str] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
@@ -55,4 +53,4 @@ class Appointment(Base):
     )
 
     patient: Mapped["Patient"] = relationship(back_populates="appointments")
-    slot: Mapped["Availability"] = relationship(back_populates="appointment")
+    slot: Mapped["Availability"] = relationship(back_populates="appointments")
