@@ -2,21 +2,23 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import Depends, FastAPI
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
-from app.services.scheduling import find_available_slots
 from app import models
 
 from app.services.scheduling import (
     book_appointment,
     cancel_appointment,
     find_available_slots,
+    get_patient_appointments,
     reschedule_appointment,
 )
+from app.services.patients import create_patient, verify_patient
+
 
 class BookingRequest(BaseModel):
     patient_id: int
@@ -25,6 +27,18 @@ class BookingRequest(BaseModel):
 
 class RescheduleRequest(BaseModel):
     new_slot_id: int
+
+class PatientRegistrationRequest(BaseModel):
+    full_name: str
+    phone: str
+    date_of_birth: date
+    insurance_name: str | None = None
+
+
+class PatientVerificationRequest(BaseModel):
+    phone: str
+    date_of_birth: date
+    
     
 Base.metadata.create_all(bind=engine)
 
@@ -161,3 +175,90 @@ def reschedule_existing_appointment(
             status_code=400,
             detail=str(error),
         ) from error
+
+@app.post(
+    "/patients",
+    status_code=201,
+    responses={
+        400: {"description": "Invalid or duplicate patient details"},
+    },
+)
+def register_patient(
+    request: PatientRegistrationRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        patient = create_patient(
+            db=db,
+            full_name=request.full_name,
+            phone=request.phone,
+            date_of_birth=request.date_of_birth,
+            insurance_name=request.insurance_name,
+        )
+
+        return {
+            "id": patient.id,
+            "full_name": patient.full_name,
+            "phone": patient.phone,
+            "date_of_birth": patient.date_of_birth,
+            "insurance_name": patient.insurance_name,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+        
+@app.post(
+    "/patients/verify",
+    responses={
+        400: {"description": "Patient verification failed"},
+    },
+)
+def verify_existing_patient(
+    request: PatientVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        patient = verify_patient(
+            db=db,
+            phone=request.phone,
+            date_of_birth=request.date_of_birth,
+        )
+
+        return {
+            "verified": True,
+            "patient_id": patient.id,
+            "full_name": patient.full_name,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+@app.get("/patients/{patient_id}/appointments")
+def list_patient_appointments(
+    patient_id: int,
+    db: Session = Depends(get_db),
+):
+    appointments = get_patient_appointments(
+        db=db,
+        patient_id=patient_id,
+    )
+
+    return [
+        {
+            "id": appointment.id,
+            "appointment_type": appointment.appointment_type,
+            "status": appointment.status,
+            "slot": {
+                "id": appointment.slot.id,
+                "start_time": appointment.slot.start_time,
+                "end_time": appointment.slot.end_time,
+            },
+        }
+        for appointment in appointments
+    ]

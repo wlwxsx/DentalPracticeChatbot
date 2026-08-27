@@ -148,3 +148,14 @@ def reschedule_appointment(
     except Exception:
         db.rollback()
         raise
+    
+def get_patient_appointments(
+    db: Session,
+    patient_id: int,
+) -> list[Appointment]:
+    return (
+        db.query(Appointment)
+        .filter(Appointment.patient_id == patient_id)
+        .order_by(Appointment.id.desc())
+        .all()
+    )
