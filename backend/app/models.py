@@ -54,3 +54,25 @@ class Appointment(Base):
 
     patient: Mapped["Patient"] = relationship(back_populates="appointments")
     slot: Mapped["Availability"] = relationship(back_populates="appointments")
+    
+class EmergencyEscalation(Base):
+    __tablename__ = "emergency_escalations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int | None] = mapped_column(
+        ForeignKey("patients.id"),
+        nullable=True,
+    )
+    contact_phone: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+    summary: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+    )

@@ -10,6 +10,7 @@ from app.services.scheduling import (
     get_patient_appointments,
     reschedule_appointment,
 )
+from app.services.emergencies import create_emergency_escalation
 
 FIND_AVAILABLE_SLOTS_TOOL = {
     "type": "function",
@@ -123,7 +124,6 @@ LIST_APPOINTMENTS_TOOL = {
     },
 }
 
-
 CANCEL_APPOINTMENT_TOOL = {
     "type": "function",
     "name": "cancel_appointment",
@@ -215,6 +215,32 @@ REGISTER_PATIENT_TOOL = {
     },
 }
 
+ESCALATE_EMERGENCY_TOOL = {
+    "type": "function",
+    "name": "escalate_emergency",
+    "description": (
+        "Notify dental staff about a potentially urgent dental situation. "
+        "Call immediately for uncontrolled bleeding, severe swelling, "
+        "trouble breathing, serious facial injury, or severe pain."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "Concise summary of the urgent symptoms.",
+            },
+            "contact_phone": {
+                "type": "string",
+                "description": (
+                    "Patient contact number, or 'unknown' if unavailable."
+                ),
+            },
+        },
+        "required": ["summary", "contact_phone"],
+    },
+}
+
 TOOLS = [
     FIND_AVAILABLE_SLOTS_TOOL,
     VERIFY_PATIENT_TOOL,
@@ -223,6 +249,7 @@ TOOLS = [
     LIST_APPOINTMENTS_TOOL,
     CANCEL_APPOINTMENT_TOOL,
     RESCHEDULE_APPOINTMENT_TOOL,
+    ESCALATE_EMERGENCY_TOOL,
 ]
 
 
@@ -305,9 +332,8 @@ def run_book_appointment(
         "appointment_type": appointment.appointment_type,
         "start_time": appointment.slot.start_time.isoformat(),
         "end_time": appointment.slot.end_time.isoformat(),
-    }
-    
-    
+    } 
+   
 def run_list_patient_appointments(
     db: Session,
     arguments: dict,
@@ -334,7 +360,6 @@ def run_list_patient_appointments(
             for appointment in scheduled
         ]
     }
-
 
 def run_cancel_appointment(
     db: Session,
@@ -505,7 +530,28 @@ def run_register_patient(
         "full_name": patient.full_name,
     }
     
+def run_escalate_emergency(
+    db: Session,
+    arguments: dict,
+) -> dict:
+    contact_phone = arguments["contact_phone"]
+
+    if contact_phone.lower() == "unknown":
+        contact_phone = None
+
+    escalation = create_emergency_escalation(
+        db=db,
+        summary=arguments["summary"],
+        contact_phone=contact_phone,
+    )
+
+    return {
+        "success": True,
+        "status": escalation.status,
+        "message": "Dental staff have been notified.",
+    }
     
+
 def execute_tool(
     db: Session,
     tool_name: str,
@@ -559,6 +605,11 @@ def execute_tool(
                 user_message=user_message,
             )
             
+        if tool_name == "escalate_emergency":
+            return run_escalate_emergency(
+                db=db,
+                arguments=arguments,
+            )
         return {
             "success": False,
             "error": "Unknown tool requested.",

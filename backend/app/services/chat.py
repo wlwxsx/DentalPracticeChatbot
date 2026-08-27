@@ -6,7 +6,11 @@ from google import genai
 from sqlalchemy.orm import Session
 
 from app.tools.dental_tools import TOOLS, execute_tool
-
+from app.services.emergencies import (
+    create_emergency_escalation,
+    extract_phone_number,
+    is_potential_emergency,
+)
 
 load_dotenv()
 
@@ -17,9 +21,17 @@ SYSTEM_INSTRUCTION = """
 You are a helpful receptionist for a dental practice.
 
 Be concise, friendly, and professional.
+
 Do not provide diagnoses.
-For severe pain, uncontrolled bleeding, facial swelling, trouble breathing,
-or serious injury, advise the patient to seek urgent care and notify staff.
+If the patient reports trouble breathing, uncontrolled bleeding, severe
+facial swelling, serious facial trauma, or another potentially life-threatening
+condition, tell them to call 911 or go to the nearest emergency department
+immediately. Do not diagnose them and do not tell them to wait for the dental
+office.
+
+Also call the emergency escalation tool so dental staff can follow up. Do not
+require appointment confirmation or patient verification before escalating.
+Ask for a contact number only if doing so would not delay emergency care.
 
 The dental practice is open Monday through Saturday from 8:00 AM to 6:00 PM
 and closed on Sundays.
@@ -69,14 +81,31 @@ def generate_chat_response(
     db: Session,
     message: str,
     previous_interaction_id: str | None = None,
-) -> tuple[str, str]:
+) -> tuple[str, str| None]:
+    
+    if is_potential_emergency(message):
+        create_emergency_escalation(
+            db=db,
+            summary=message,
+            contact_phone=extract_phone_number(message),
+        )
+
+        return (
+            "Please call 911 or go to the nearest emergency department "
+            "immediately. This may be a life-threatening situation. "
+            "Dental staff have also been notified for follow-up.",
+            previous_interaction_id,
+        )
+    #TODO: Add a local rule response for non-life-threatening emergencies that don't require escalation to 911.
+    #TODO: Notification Emailing system with patient info to staff for follow-up on non-life-threatening emergencies.
+
     request = {
         "model": MODEL,
         "system_instruction": SYSTEM_INSTRUCTION,
         "input": message,
         "tools": TOOLS,
     }
-
+    
     if previous_interaction_id:
         request["previous_interaction_id"] = previous_interaction_id
 
