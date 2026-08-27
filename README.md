@@ -19,6 +19,8 @@ The prototype supports these workflows:
 * Book back-to-back appointments for multiple family members atomically
 * Escalate potential dental emergencies to staff
 * Answer practice information questions
+* Automatically try to book the earliest available appointment for a known
+    patient with a non-life-threatening urgent dental concern
 * Maintain context across a multi-turn conversation
 
 ## Technology Stack
@@ -130,7 +132,6 @@ availability
 - id
 - start_time
 - end_time
-- appointment_type
 - status
 ```
 
@@ -143,6 +144,10 @@ The seeded practice schedule is:
 * Closed Sundays
 * One-hour appointment slots
 * Availability generated for the next 180 days
+
+Availability slots do not have an appointment type. The requested type, such
+as `general` or `emergency`, is collected during booking and stored on the
+appointment for staff.
 
 ### Appointments
 
@@ -171,6 +176,11 @@ emergency_escalations
 ```
 
 Emergency escalations are stored with a `pending` status for staff follow-up.
+When SMTP settings are configured, staff also receive an email containing the
+reported emergency, matched patient details, and the automatic booking result.
+Known patients with urgent non-life-threatening concerns are automatically
+booked into the earliest available slot with appointment type `emergency`, and
+the reported symptoms are saved in `emergency_summary`.
 
 ## Supported Chatbot Tools
 
@@ -403,8 +413,10 @@ Test coverage includes:
 * Patient verification
 * Duplicate-patient rejection
 * Emergency detection
+* Life-threatening versus urgent dental emergency classification
 * Phone extraction
 * Emergency escalation creation
+* Automatic earliest-slot booking for known urgent patients
 
 ### Frontend validation
 
@@ -546,7 +558,7 @@ These items were deferred to keep the prototype focused on the highest-value pat
 * The free Gemini tier may return temporary rate-limit errors during repeated testing.
 * Emergency detection uses a conservative phrase list rather than a clinical triage system.
 * Authentication is simulated through legal name, phone number, and DOB verification.
-* Staff escalations are stored but no staff dashboard or external notification integration is included.
+* Staff escalations are stored and optional SMTP email notifications are supported, but no staff dashboard is included.
 * The seeded schedule contains synthetic availability rather than a live practice calendar.
 * Times are treated as the dental practice’s local time and do not currently include explicit timezone conversion.
 
