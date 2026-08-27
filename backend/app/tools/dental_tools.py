@@ -246,6 +246,81 @@ ESCALATE_EMERGENCY_TOOL = {
     },
 }
 
+GET_PRACTICE_INFORMATION_TOOL = {
+    "type": "function",
+    "name": "get_practice_information",
+    "description": (
+        "Returns verified information about office hours, location, insurance, "
+        "payment, self-pay, membership, and financing."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "topic": {
+                "type": "string",
+                "enum": [
+                    "hours",
+                    "location",
+                    "insurance",
+                    "payment",
+                    "self_pay",
+                    "membership",
+                    "financing",
+                ],
+                "description": "The practice-information topic requested.",
+            }
+        },
+        "required": ["topic"],
+    },
+}
+
+PRACTICE_INFORMATION = {
+    "hours": {
+        "message": (
+            "The dental practice is open Monday through Saturday from "
+            "8:00 AM to 6:00 PM and is closed on Sunday."
+        ),
+    },
+    "location": {
+        "message": (
+            "A street address was not provided. Please contact the front desk "
+            "for the practice location."
+        ),
+    },
+    "insurance": {
+        "message": (
+            "The practice accepts all major dental insurance plans. "
+            "Coverage depends on the patient's individual plan and should "
+            "be confirmed with the dental office."
+        ),
+    },
+    "payment": {
+        "message": (
+            "Insurance and self-pay options are available. Exact prices and "
+            "payment arrangements should be confirmed with the front desk."
+        ),
+    },
+    "self_pay": {
+        "message": (
+            "Self-pay options are available for patients without insurance."
+        ),
+    },
+    "membership": {
+        "message": (
+            "Membership options may be available for patients without "
+            "insurance. Please contact the front desk for current details."
+        ),
+    },
+    "financing": {
+        "message": (
+            "Financing options may be available for patients without "
+            "insurance. Please contact the front desk for eligibility and terms."
+        ),
+    },
+}
+
+
+
 TOOLS = [
     FIND_AVAILABLE_SLOTS_TOOL,
     VERIFY_PATIENT_TOOL,
@@ -255,6 +330,7 @@ TOOLS = [
     CANCEL_APPOINTMENT_TOOL,
     RESCHEDULE_APPOINTMENT_TOOL,
     ESCALATE_EMERGENCY_TOOL,
+    GET_PRACTICE_INFORMATION_TOOL
 ]
 
 
@@ -559,7 +635,22 @@ def run_escalate_emergency(
         "message": "Dental staff have been notified.",
     }
     
+def get_practice_information(topic: str) -> dict:
+    normalized_topic = topic.strip().lower()
+    information = PRACTICE_INFORMATION.get(normalized_topic)
 
+    if information is None:
+        return {
+            "success": False,
+            "message": "That practice-information topic is not available.",
+        }
+
+    return {
+        "success": True,
+        "topic": normalized_topic,
+        **information,
+    }
+    
 def execute_tool(
     db: Session,
     tool_name: str,
@@ -618,6 +709,11 @@ def execute_tool(
                 db=db,
                 arguments=arguments,
             )
+        if tool_name == "get_practice_information":
+            return get_practice_information(
+                topic=arguments["topic"],
+            )
+    
         return {
             "success": False,
             "error": "Unknown tool requested.",

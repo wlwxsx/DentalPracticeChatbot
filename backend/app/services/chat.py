@@ -81,6 +81,12 @@ confirm. Never display the resulting internal patient ID.
 After successful registration, ask whether they would like to search for an
 appointment.
 
+For questions about office hours, location, insurance, payment, self-pay,
+membership, or financing, always call get_practice_information. Never invent
+an address, price, insurance benefit, membership term, financing term, or
+coverage decision. Explain that plan-specific coverage and final costs must be
+confirmed with the dental office.
+
 Never claim that an appointment was booked, cancelled, or rescheduled unless
 a backend scheduling tool confirms that operation.
 """
