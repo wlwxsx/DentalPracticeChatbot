@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from app.services.patients import verify_patient
+from app.services.patients import create_patient, verify_patient
 from app.services.scheduling import (
     book_appointment,
     cancel_appointment,
@@ -176,13 +176,53 @@ RESCHEDULE_APPOINTMENT_TOOL = {
     },
 }
 
+REGISTER_PATIENT_TOOL = {
+    "type": "function",
+    "name": "register_patient",
+    "description": (
+        "Register a new dental patient after collecting their name, phone "
+        "number, date of birth, and optional insurance information. "
+        "Only call after the patient explicitly confirms their details."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "full_name": {
+                "type": "string",
+                "description": "The patient's full legal name.",
+            },
+            "phone": {
+                "type": "string",
+                "description": "The patient's phone number.",
+            },
+            "date_of_birth": {
+                "type": "string",
+                "description": "Date of birth in YYYY-MM-DD format.",
+            },
+            "insurance_name": {
+                "type": "string",
+                "description": (
+                    "Insurance provider name, or 'none' if uninsured."
+                ),
+            },
+        },
+        "required": [
+            "full_name",
+            "phone",
+            "date_of_birth",
+            "insurance_name",
+        ],
+    },
+}
+
 TOOLS = [
     FIND_AVAILABLE_SLOTS_TOOL,
     VERIFY_PATIENT_TOOL,
+    REGISTER_PATIENT_TOOL,
     BOOK_APPOINTMENT_TOOL,
     LIST_APPOINTMENTS_TOOL,
     CANCEL_APPOINTMENT_TOOL,
-    RESCHEDULE_APPOINTMENT_TOOL
+    RESCHEDULE_APPOINTMENT_TOOL,
 ]
 
 
@@ -414,6 +454,56 @@ def run_reschedule_appointment(
         "new_end_time": updated.slot.end_time.isoformat(),
     }
     
+def run_register_patient(
+    db: Session,
+    arguments: dict,
+    user_message: str,
+) -> dict:
+    normalized_message = user_message.lower()
+
+    explicitly_confirmed = any(
+        phrase in normalized_message
+        for phrase in (
+            "yes",
+            "confirm",
+            "looks correct",
+            "that's correct",
+            "go ahead",
+        )
+    )
+
+    if not explicitly_confirmed:
+        raise ValueError(
+            "The patient has not been registered. "
+            "Summarize their details and ask for explicit confirmation."
+        )
+
+    insurance_name = arguments["insurance_name"].strip()
+
+    if insurance_name.lower() in {
+        "none",
+        "no insurance",
+        "uninsured",
+        "self-pay",
+        "self pay",
+    }:
+        insurance_name = None
+
+    patient = create_patient(
+        db=db,
+        full_name=arguments["full_name"],
+        phone=arguments["phone"],
+        date_of_birth=date.fromisoformat(
+            arguments["date_of_birth"]
+        ),
+        insurance_name=insurance_name,
+    )
+
+    return {
+        "success": True,
+        "patient_id": patient.id,
+        "full_name": patient.full_name,
+    }
     
     
 def execute_tool(
@@ -454,6 +544,7 @@ def execute_tool(
                 arguments=arguments,
                 user_message=user_message,
             )
+            
         if tool_name == "reschedule_appointment":
             return run_reschedule_appointment(
                 db=db,
@@ -461,6 +552,13 @@ def execute_tool(
                 user_message=user_message,
             )
 
+        if tool_name == "register_patient":
+            return run_register_patient(
+                db=db,
+                arguments=arguments,
+                user_message=user_message,
+            )
+            
         return {
             "success": False,
             "error": "Unknown tool requested.",
