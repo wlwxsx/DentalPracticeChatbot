@@ -1,5 +1,4 @@
-import { FormEvent, useState } from "react";
-import "./App.css";
+import { useState, type SubmitEvent } from "react";import "./App.css";
 
 type Message = {
   id: string;
@@ -20,7 +19,7 @@ function App() {
       id: crypto.randomUUID(),
       role: "assistant",
       content:
-        "Hello! I’m the dental practice assistant. I can help you register, find appointments, book, reschedule, or cancel.",
+        "Hello! I'm the dental practice assistant. I can help you register, find appointments, book, reschedule, or cancel.",
     },
   ]);
 
@@ -29,7 +28,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+  async function sendMessage(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const trimmedInput = input.trim();
