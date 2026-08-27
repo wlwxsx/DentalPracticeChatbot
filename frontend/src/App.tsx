@@ -1,4 +1,5 @@
-import { useState, type SubmitEvent } from "react";import "./App.css";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import "./App.css";
 
 type Message = {
   id: string;
@@ -27,6 +28,11 @@ function App() {
   const [interactionId, setInteractionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
   async function sendMessage(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -142,6 +148,8 @@ function App() {
               <div className="message-bubble typing">Thinking…</div>
             </div>
           )}
+
+          <div ref={messagesEndRef} aria-hidden="true" />
         </div>
 
         {error && <div className="error-message">{error}</div>}
