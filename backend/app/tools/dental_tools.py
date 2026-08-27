@@ -52,11 +52,16 @@ VERIFY_PATIENT_TOOL = {
     "type": "function",
     "name": "verify_patient",
     "description": (
-        "Verify a returning patient using their phone number and date of birth."
+        "Verify a returning patient using their entire legal name, phone number, "
+        "and date of birth."
     ),
     "parameters": {
         "type": "object",
         "properties": {
+            "full_name": {
+                "type": "string",
+                "description": "The patient's entire legal name.",
+            },
             "phone": {
                 "type": "string",
                 "description": "The patient's phone number.",
@@ -68,7 +73,7 @@ VERIFY_PATIENT_TOOL = {
                 ),
             },
         },
-        "required": ["phone", "date_of_birth"],
+        "required": ["full_name", "phone", "date_of_birth"],
     },
 }
 
@@ -285,6 +290,7 @@ def run_verify_patient(
 ) -> dict:
     patient = verify_patient(
         db=db,
+        full_name=arguments["full_name"],
         phone=arguments["phone"],
         date_of_birth=date.fromisoformat(arguments["date_of_birth"]),
     )

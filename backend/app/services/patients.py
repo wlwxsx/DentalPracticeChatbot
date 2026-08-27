@@ -53,10 +53,12 @@ def create_patient(
 
 def verify_patient(
     db: Session,
+    full_name: str,
     phone: str,
     date_of_birth: date,
 ) -> Patient:
     normalized_phone = normalize_phone(phone)
+    normalized_name = " ".join(full_name.split()).casefold()
 
     patient = (
         db.query(Patient)
@@ -67,7 +69,7 @@ def verify_patient(
         .first()
     )
 
-    if patient is None:
+    if patient is None or " ".join(patient.full_name.split()).casefold() != normalized_name:
         raise ValueError(
             "We could not verify a patient with those details."
         )

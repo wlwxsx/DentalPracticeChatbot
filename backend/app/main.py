@@ -37,6 +37,7 @@ class PatientRegistrationRequest(BaseModel):
 
 
 class PatientVerificationRequest(BaseModel):
+    full_name: str
     phone: str
     date_of_birth: date
 
@@ -227,6 +228,7 @@ def verify_existing_patient(
     try:
         patient = verify_patient(
             db=db,
+            full_name=request.full_name,
             phone=request.phone,
             date_of_birth=request.date_of_birth,
         )

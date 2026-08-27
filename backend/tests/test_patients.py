@@ -41,9 +41,17 @@ def test_create_patient_rejects_duplicate_normalized_phone(db: Session, patient)
 
 
 def test_verify_patient_requires_matching_phone_and_date_of_birth(db: Session, patient):
-    verified = verify_patient(db, "(416) 555-0123", date(1995, 6, 15))
+    verified = verify_patient(
+        db,
+        "  alex   morgan ",
+        "(416) 555-0123",
+        date(1995, 6, 15),
+    )
 
     assert verified.id == patient.id
 
     with pytest.raises(ValueError, match="could not verify"):
-        verify_patient(db, "416-555-0123", date(1995, 6, 16))
+        verify_patient(db, "Alex Morgan", "416-555-0123", date(1995, 6, 16))
+
+    with pytest.raises(ValueError, match="could not verify"):
+        verify_patient(db, "Alex Smith", "416-555-0123", date(1995, 6, 15))

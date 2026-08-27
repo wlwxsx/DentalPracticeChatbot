@@ -6,6 +6,7 @@ from app.models import Availability, Patient
 
 Base.metadata.create_all(bind=engine)
 
+BOOKING_WINDOW_DAYS = 180
 
 def seed_database():
     db = SessionLocal()
@@ -24,7 +25,7 @@ def seed_database():
         if db.query(Availability).count() == 0:
             today = datetime.now().date()
 
-            for day_offset in range(1, 15):
+            for day_offset in range(1, BOOKING_WINDOW_DAYS + 1): # four month for now
                 slot_date = today + timedelta(days=day_offset)
 
                 # Skip weekends.
