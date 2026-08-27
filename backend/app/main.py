@@ -19,6 +19,8 @@ from app.services.scheduling import (
 )
 from app.services.patients import create_patient, verify_patient
 
+from app.services.chat import generate_chat_response
+
 
 class BookingRequest(BaseModel):
     patient_id: int
@@ -38,7 +40,10 @@ class PatientRegistrationRequest(BaseModel):
 class PatientVerificationRequest(BaseModel):
     phone: str
     date_of_birth: date
-    
+
+class ChatRequest(BaseModel):
+    message: str
+    previous_interaction_id: str | None = None
     
 Base.metadata.create_all(bind=engine)
 
@@ -262,3 +267,29 @@ def list_patient_appointments(
         }
         for appointment in appointments
     ]
+    
+@app.post(
+    "/chat",
+    responses={
+        502: {"description": "LLM API request failed"},
+    },
+)
+def chat(request: ChatRequest):
+    try:
+        message, interaction_id = generate_chat_response(
+            message=request.message,
+            previous_interaction_id=request.previous_interaction_id,
+        )
+
+        return {
+            "message": message,
+            "interaction_id": interaction_id,
+        }
+
+    except Exception as error:
+        print(f"LLM error: {type(error).__name__}: {error}")
+
+        raise HTTPException(
+            status_code=502,
+            detail="The assistant is temporarily unavailable.",
+        ) from error
