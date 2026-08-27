@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from google import genai
 from sqlalchemy.orm import Session
 from datetime import date
+import re
 
 from app.tools.dental_tools import TOOLS, execute_tool
 from app.services.emergencies import (
@@ -83,7 +84,13 @@ Never claim that an appointment was booked, cancelled, or rescheduled unless
 a backend scheduling tool confirms that operation.
 """
 
-    
+INTERNAL_ID_PATTERN = re.compile(
+    r"\s*\(?\s*(?:slot|patient|appointment)\s+ID\s*:\s*\d+\s*\)?",
+    flags=re.IGNORECASE,
+)
+
+def sanitize_customer_response(response: str) -> str:
+    return INTERNAL_ID_PATTERN.sub("", response)
 
 def generate_chat_response(
     db: Session,
@@ -142,7 +149,7 @@ def generate_chat_response(
                 or "I'm sorry, I couldn't complete that request."
             )
 
-            return response_text, interaction.id
+            return  sanitize_customer_response(response_text),interaction.id
 
         function_results = []
 
