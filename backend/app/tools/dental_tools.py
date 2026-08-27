@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.services.patients import create_patient, verify_patient
 from app.services.scheduling import (
     book_appointment,
+    book_family_appointments,
     cancel_appointment,
     find_available_slots,
     get_patient_appointments,
@@ -106,6 +107,34 @@ BOOK_APPOINTMENT_TOOL = {
             "patient_id",
             "slot_id"
         ],
+    },
+}
+
+BOOK_FAMILY_APPOINTMENTS_TOOL = {
+    "type": "function",
+    "name": "book_family_appointments",
+    "description": (
+        "Book multiple confirmed family appointments in consecutive, back-to-back "
+        "available slots. The operation is atomic: book none if the full block "
+        "cannot be scheduled."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "bookings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "patient_id": {"type": "integer"},
+                        "slot_id": {"type": "integer"},
+                    },
+                    "required": ["patient_id", "slot_id"],
+                },
+                "minItems": 2,
+            },
+        },
+        "required": ["bookings"],
     },
 }
 
@@ -326,6 +355,7 @@ TOOLS = [
     VERIFY_PATIENT_TOOL,
     REGISTER_PATIENT_TOOL,
     BOOK_APPOINTMENT_TOOL,
+    BOOK_FAMILY_APPOINTMENTS_TOOL,
     LIST_APPOINTMENTS_TOOL,
     CANCEL_APPOINTMENT_TOOL,
     RESCHEDULE_APPOINTMENT_TOOL,
@@ -417,6 +447,35 @@ def run_book_appointment(
         "start_time": appointment.slot.start_time.isoformat(),
         "end_time": appointment.slot.end_time.isoformat(),
     } 
+
+
+def run_book_family_appointments(
+    db: Session,
+    arguments: dict,
+    user_message: str,
+) -> dict:
+    if not any(
+        phrase in user_message.lower().strip()
+        for phrase in ("yes", "confirm", "book it", "go ahead", "yes please")
+    ):
+        raise ValueError(
+            "The family appointments have not been booked. Ask for explicit confirmation."
+        )
+
+    appointments = book_family_appointments(db=db, bookings=arguments["bookings"])
+    return {
+        "success": True,
+        "appointments": [
+            {
+                "appointment_id": appointment.id,
+                "patient_id": appointment.patient_id,
+                "slot_id": appointment.slot_id,
+                "start_time": appointment.slot.start_time.isoformat(),
+                "end_time": appointment.slot.end_time.isoformat(),
+            }
+            for appointment in appointments
+        ],
+    }
    
 def run_list_patient_appointments(
     db: Session,
@@ -681,6 +740,13 @@ def execute_tool(
             return run_list_patient_appointments(
                 db=db,
                 arguments=arguments,
+            )
+
+        if tool_name == "book_family_appointments":
+            return run_book_family_appointments(
+                db=db,
+                arguments=arguments,
+                user_message=user_message,
             )
 
         if tool_name == "cancel_appointment":

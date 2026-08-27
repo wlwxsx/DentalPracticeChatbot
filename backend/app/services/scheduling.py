@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import Appointment, Availability
+from app.models import Appointment, Availability, Patient
 
 
 def find_available_slots(
@@ -53,6 +53,71 @@ def book_appointment(
         db.commit()
         db.refresh(appointment)
         return appointment
+    except Exception:
+        db.rollback()
+        raise
+
+
+def book_family_appointments(
+    db: Session,
+    bookings: list[dict[str, int]],
+) -> list[Appointment]:
+    """Book consecutive appointments for multiple family members atomically."""
+    if len(bookings) < 2:
+        raise ValueError("Family scheduling requires at least two appointments.")
+
+    slot_ids = [booking["slot_id"] for booking in bookings]
+    patient_ids = [booking["patient_id"] for booking in bookings]
+    if len(slot_ids) != len(set(slot_ids)):
+        raise ValueError("Each family member must have a different appointment slot.")
+    if len(patient_ids) != len(set(patient_ids)):
+        raise ValueError("Each family appointment must belong to a different family member.")
+
+    slots = (
+        db.query(Availability)
+        .filter(Availability.id.in_(slot_ids))
+        .all()
+    )
+    slots_by_id = {slot.id: slot for slot in slots}
+    if len(slots_by_id) != len(slot_ids):
+        raise ValueError("One or more family appointment slots do not exist.")
+
+    ordered_slots = [slots_by_id[slot_id] for slot_id in slot_ids]
+    for slot in ordered_slots:
+        if slot.status != "available":
+            raise ValueError("All family appointment slots must be available.")
+
+    for previous, current in zip(ordered_slots, ordered_slots[1:]):
+        if previous.end_time != current.start_time:
+            raise ValueError("Family appointment slots must be back-to-back with no gaps.")
+
+    patients = {
+        patient_id
+        for (patient_id,) in db.query(Patient.id)
+        .filter(Patient.id.in_(patient_ids))
+        .all()
+    }
+    if patients != set(patient_ids):
+        raise ValueError("One or more family members do not exist.")
+
+    appointments = [
+        Appointment(
+            patient_id=booking["patient_id"],
+            slot_id=booking["slot_id"],
+            appointment_type=slot.appointment_type,
+            status="scheduled",
+        )
+        for booking, slot in zip(bookings, ordered_slots)
+    ]
+    for slot in ordered_slots:
+        slot.status = "booked"
+    db.add_all(appointments)
+
+    try:
+        db.commit()
+        for appointment in appointments:
+            db.refresh(appointment)
+        return appointments
     except Exception:
         db.rollback()
         raise

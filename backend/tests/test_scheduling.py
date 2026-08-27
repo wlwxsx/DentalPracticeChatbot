@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Appointment
 from app.services.scheduling import (
     book_appointment,
+    book_family_appointments,
     cancel_appointment,
     find_available_slots,
     get_patient_appointments,
@@ -41,6 +42,62 @@ def test_book_appointment_marks_slot_booked_and_prevents_double_booking(
 def test_book_appointment_rejects_missing_slot(db: Session, patient):
     with pytest.raises(ValueError, match="does not exist"):
         book_appointment(db, patient.id, 999)
+
+
+def test_book_family_appointments_books_consecutive_slots_atomically(
+    db: Session,
+    patient,
+    slots,
+):
+    second_patient = type(patient)(
+        full_name="Taylor Morgan",
+        phone="4165550124",
+        date_of_birth=patient.date_of_birth,
+    )
+    db.add(second_patient)
+    db.commit()
+    db.refresh(second_patient)
+
+    appointments = book_family_appointments(
+        db,
+        [
+            {"patient_id": patient.id, "slot_id": slots[0].id},
+            {"patient_id": second_patient.id, "slot_id": slots[1].id},
+        ],
+    )
+
+    assert [appointment.slot_id for appointment in appointments] == [
+        slots[0].id,
+        slots[1].id,
+    ]
+    assert all(appointment.status == "scheduled" for appointment in appointments)
+
+
+def test_book_family_appointments_does_not_partially_book_when_not_consecutive(
+    db: Session,
+    patient,
+    slots,
+):
+    second_patient = type(patient)(
+        full_name="Taylor Morgan",
+        phone="4165550124",
+        date_of_birth=patient.date_of_birth,
+    )
+    db.add(second_patient)
+    db.commit()
+    db.refresh(second_patient)
+
+    with pytest.raises(ValueError, match="back-to-back"):
+        book_family_appointments(
+            db,
+            [
+                {"patient_id": patient.id, "slot_id": slots[0].id},
+                {"patient_id": second_patient.id, "slot_id": slots[2].id},
+            ],
+        )
+
+    assert db.query(Appointment).count() == 0
+    assert db.get(type(slots[0]), slots[0].id).status == "available"
 
 
 def test_cancel_appointment_releases_slot(db: Session, patient, slots):

@@ -12,6 +12,7 @@ from app import models
 
 from app.services.scheduling import (
     book_appointment,
+    book_family_appointments,
     cancel_appointment,
     find_available_slots,
     get_patient_appointments,
@@ -25,6 +26,15 @@ from app.services.chat import generate_chat_response
 class BookingRequest(BaseModel):
     patient_id: int
     slot_id: int
+
+
+class FamilyBooking(BaseModel):
+    patient_id: int
+    slot_id: int
+
+
+class FamilyBookingRequest(BaseModel):
+    bookings: list[FamilyBooking]
 
 class RescheduleRequest(BaseModel):
     new_slot_id: int
@@ -299,3 +309,29 @@ def chat(
             status_code=502,
             detail="The assistant is temporarily unavailable.",
         ) from error
+
+
+@app.post("/family-appointments", status_code=201)
+def create_family_appointments(
+    request: FamilyBookingRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        appointments = book_family_appointments(
+            db=db,
+            bookings=[booking.model_dump() for booking in request.bookings],
+        )
+        return {
+            "appointments": [
+                {
+                    "id": appointment.id,
+                    "patient_id": appointment.patient_id,
+                    "slot_id": appointment.slot_id,
+                    "appointment_type": appointment.appointment_type,
+                    "status": appointment.status,
+                }
+                for appointment in appointments
+            ]
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
