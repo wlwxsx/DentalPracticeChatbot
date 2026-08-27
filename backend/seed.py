@@ -42,7 +42,6 @@ def seed_database():
                         Availability(
                             start_time=start_time,
                             end_time=start_time + timedelta(hours=1),
-                            appointment_type="general",
                             status="available",
                         )
                     )

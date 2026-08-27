@@ -49,25 +49,21 @@ def slots(db: Session) -> list[Availability]:
         Availability(
             start_time=start,
             end_time=start + timedelta(hours=1),
-            appointment_type="general",
             status="available",
         ),
         Availability(
             start_time=start + timedelta(hours=1),
             end_time=start + timedelta(hours=2),
-            appointment_type="general",
             status="available",
         ),
         Availability(
             start_time=start + timedelta(hours=2),
             end_time=start + timedelta(hours=3),
-            appointment_type="emergency",
             status="available",
         ),
         Availability(
             start_time=start + timedelta(hours=3),
             end_time=start + timedelta(hours=4),
-            appointment_type="general",
             status="booked",
         ),
     ]

@@ -9,14 +9,12 @@ def find_available_slots(
     db: Session,
     start_date: datetime,
     end_date: datetime,
-    appointment_type: str = "general",
 ) -> list[Availability]:
     return (
         db.query(Availability)
         .filter(
             Availability.start_time >= start_date,
             Availability.start_time <= end_date,
-            Availability.appointment_type == appointment_type,
             Availability.status == "available",
         )
         .order_by(Availability.start_time)
@@ -28,6 +26,8 @@ def book_appointment(
     db: Session,
     patient_id: int,
     slot_id: int,
+    appointment_type: str | None = None,
+    emergency_summary: str | None = None,
 ) -> Appointment:
     slot = db.query(Availability).filter(
         Availability.id == slot_id
@@ -42,8 +42,9 @@ def book_appointment(
     appointment = Appointment(
         patient_id=patient_id,
         slot_id=slot.id,
-        appointment_type=slot.appointment_type,
+        appointment_type=appointment_type or "general",
         status="scheduled",
+        emergency_summary=emergency_summary,
     )
 
     slot.status = "booked"
@@ -60,7 +61,7 @@ def book_appointment(
 
 def book_family_appointments(
     db: Session,
-    bookings: list[dict[str, int]],
+    bookings: list[dict[str, int | str]],
 ) -> list[Appointment]:
     """Book consecutive appointments for multiple family members atomically."""
     if len(bookings) < 2:
@@ -104,7 +105,7 @@ def book_family_appointments(
         Appointment(
             patient_id=booking["patient_id"],
             slot_id=booking["slot_id"],
-            appointment_type=slot.appointment_type,
+            appointment_type=booking.get("appointment_type", "general"),
             status="scheduled",
         )
         for booking, slot in zip(bookings, ordered_slots)
@@ -188,11 +189,6 @@ def reschedule_appointment(
 
     if new_slot.status != "available":
         raise ValueError("The new appointment slot is no longer available.")
-
-    if new_slot.appointment_type != appointment.appointment_type:
-        raise ValueError(
-            "The new slot does not support this appointment type."
-        )
 
     old_slot = (
         db.query(Availability)

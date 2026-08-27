@@ -26,6 +26,8 @@ from app.services.chat import generate_chat_response
 class BookingRequest(BaseModel):
     patient_id: int
     slot_id: int
+    appointment_type: str = "general"
+    emergency_summary: str | None = None
 
 
 class FamilyBooking(BaseModel):
@@ -76,14 +78,12 @@ def health_check():
 def get_available_slots(
     start_date: datetime,
     end_date: datetime,
-    appointment_type: str = "general",
     db: Session = Depends(get_db),
 ):
     slots = find_available_slots(
         db=db,
         start_date=start_date,
         end_date=end_date,
-        appointment_type=appointment_type,
     )
 
     return [
@@ -91,7 +91,6 @@ def get_available_slots(
             "id": slot.id,
             "start_time": slot.start_time,
             "end_time": slot.end_time,
-            "appointment_type": slot.appointment_type,
         }
         for slot in slots
     ]
@@ -114,6 +113,8 @@ def create_appointment(
             db=db,
             patient_id=request.patient_id,
             slot_id=request.slot_id,
+            appointment_type=request.appointment_type,
+            emergency_summary=request.emergency_summary,
         )
 
         return {

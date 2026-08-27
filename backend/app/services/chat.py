@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from google import genai
@@ -8,11 +9,15 @@ from datetime import date
 import re
 
 from app.tools.dental_tools import TOOLS, execute_tool
+from app.models import Patient
 from app.services.emergencies import (
     create_emergency_escalation,
     extract_phone_number,
-    is_potential_emergency,
+    is_life_threatening,
+    is_non_life_threatening_emergency,
+    notify_staff,
 )
+from app.services.scheduling import book_appointment, find_available_slots
 
 load_dotenv()
 
@@ -36,6 +41,18 @@ facial swelling, serious facial trauma, or another potentially life-threatening
 condition, tell them to call 911 or go to the nearest emergency department
 immediately. Do not diagnose them and do not tell them to wait for the dental
 office.
+
+For urgent but non-life-threatening dental concerns such as severe tooth pain,
+a broken or knocked-out tooth, or a possible dental infection, acknowledge the
+urgency, try to book the earliest available appointment for the matched
+patient, and escalate the report to staff. Do not tell the patient to call 911
+unless life-threatening symptoms are present.
+
+The emergency escalation tool may also book the earliest available emergency
+appointment. Only say that an emergency appointment is confirmed when the tool
+result explicitly reports that an appointment was booked. If no patient record
+can be matched, explain that staff were notified and the patient must contact
+the office to complete booking.
 
 Also call the emergency escalation tool so dental staff can follow up. Do not
 require appointment confirmation or patient verification before escalating.
@@ -113,6 +130,13 @@ family booking tool after confirmation, and never create a partial family
 booking.
 """
 
+APPOINTMENT_TYPE_PROMPT = """
+Before booking an appointment, ask which appointment type the patient needs,
+such as a general visit, cleaning, or emergency visit. Use the
+selected type to inform staff and store it on the appointment record; it does
+not describe the availability slot.
+"""
+
 SYSTEM_INSTRUCTION = "\n\n".join(
     section.strip()
     for section in (
@@ -124,6 +148,7 @@ SYSTEM_INSTRUCTION = "\n\n".join(
         REGISTRATION_PROMPT,
         APPOINTMENT_PROMPT,
         FAMILY_PROMPT,
+        APPOINTMENT_TYPE_PROMPT,
     )
 )
 
@@ -136,28 +161,94 @@ INTERNAL_ID_PATTERN = re.compile(
 def sanitize_customer_response(response: str) -> str:
     return INTERNAL_ID_PATTERN.sub("", response)
 
+
+def book_earliest_urgent_appointment(
+    db: Session,
+    patient: Patient | None,
+    emergency_summary: str,
+) -> tuple[object | None, str]:
+    if patient is None:
+        return (
+            None,
+            "The patient could not be matched to an existing record. "
+            "Please contact the dental office promptly to arrange care.",
+        )
+
+    slots = find_available_slots(
+        db=db,
+        start_date=datetime.now(),
+        end_date=datetime.now() + timedelta(days=180),
+        appointment_type="emergency",
+    )
+    if not slots:
+        return None, "No appointment slot was available for automatic booking."
+
+    try:
+        appointment = book_appointment(
+            db,
+            patient.id,
+            slots[0].id,
+            appointment_type="emergency",
+            emergency_summary=emergency_summary,
+        )
+    except ValueError as error:
+        return None, f"Automatic booking could not be completed: {error}"
+
+    appointment_time = appointment.slot.start_time.strftime("%A, %B %d at %I:%M %p")
+    return appointment, f"Booked the earliest available appointment for {appointment_time}."
+
 def generate_chat_response(
     db: Session,
     message: str,
     previous_interaction_id: str | None = None,
 ) -> tuple[str, str| None]:
     
-    if is_potential_emergency(message):
-        create_emergency_escalation(
+    if is_life_threatening(message) or is_non_life_threatening_emergency(message):
+        contact_phone = extract_phone_number(message)
+        escalation = create_emergency_escalation(
             db=db,
             summary=message,
-            contact_phone=extract_phone_number(message),
+            contact_phone=contact_phone,
         )
+        patient = None
+        if contact_phone:
+            patient = db.query(Patient).filter(Patient.phone == contact_phone).first()
 
+        if is_non_life_threatening_emergency(message):
+            _, appointment_details = book_earliest_urgent_appointment(
+                db,
+                patient,
+                message,
+            )
+            notification_sent = notify_staff(
+                message,
+                contact_phone,
+                patient,
+                appointment_details,
+            )
+            notification_details = (
+                "Staff email sent."
+                if notification_sent
+                else "Staff escalation was recorded, but the staff email could not be sent."
+            )
+            return (
+                f"This sounds urgent but not life-threatening. {appointment_details} "
+                f"{notification_details}",
+                previous_interaction_id,
+            )
+
+        notification_sent = notify_staff(message, contact_phone, patient)
+        notification_details = (
+            "Staff email sent."
+            if notification_sent
+            else "Staff escalation was recorded, but the staff email could not be sent."
+        )
         return (
             "Please call 911 or go to the nearest emergency department "
             "immediately. This may be a life-threatening situation. "
-            "Dental staff have also been notified for follow-up.",
+            f"{notification_details}",
             previous_interaction_id,
         )
-    #TODO: Add a local rule response for non-life-threatening emergencies that don't require escalation to 911.
-    #TODO: Notification Emailing system with patient info to staff for follow-up on non-life-threatening emergencies.
-
     today = date.today().isoformat()
 
     runtime_instruction = (

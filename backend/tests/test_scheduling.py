@@ -14,13 +14,13 @@ from app.services.scheduling import (
 )
 
 
-def test_find_available_slots_filters_type_status_and_date(db: Session, slots):
+def test_find_available_slots_filters_status_and_date(db: Session, slots):
     start = datetime(2026, 8, 28, 8, 0)
     end = start + timedelta(hours=5)
 
-    results = find_available_slots(db, start, end, appointment_type="general")
+    results = find_available_slots(db, start, end)
 
-    assert [slot.id for slot in results] == [slots[0].id, slots[1].id]
+    assert [slot.id for slot in results] == [slots[0].id, slots[1].id, slots[2].id]
 
 
 def test_book_appointment_marks_slot_booked_and_prevents_double_booking(
@@ -37,6 +37,31 @@ def test_book_appointment_marks_slot_booked_and_prevents_double_booking(
 
     with pytest.raises(ValueError, match="no longer available"):
         book_appointment(db, patient.id, slots[0].id)
+
+
+def test_book_appointment_stores_type_and_emergency_notes(
+    db: Session,
+    patient,
+    slots,
+):
+    appointment = book_appointment(
+        db,
+        patient.id,
+        slots[2].id,
+        appointment_type="emergency",
+        emergency_summary="Severe tooth pain after an extraction.",
+    )
+
+    assert appointment.appointment_type == "emergency"
+    assert appointment.emergency_summary == "Severe tooth pain after an extraction."
+
+    cleaning = book_appointment(
+        db,
+        patient.id,
+        slots[1].id,
+        appointment_type="cleaning",
+    )
+    assert cleaning.appointment_type == "cleaning"
 
 
 def test_book_appointment_rejects_missing_slot(db: Session, patient):
@@ -125,11 +150,8 @@ def test_reschedule_appointment_moves_booking_and_releases_old_slot(
     assert db.get(type(slots[1]), slots[1].id).status == "booked"
 
 
-def test_reschedule_rejects_incompatible_or_booked_slot(db: Session, patient, slots):
+def test_reschedule_rejects_booked_slot(db: Session, patient, slots):
     appointment = book_appointment(db, patient.id, slots[0].id)
-
-    with pytest.raises(ValueError, match="does not support"):
-        reschedule_appointment(db, appointment.id, slots[2].id)
 
     with pytest.raises(ValueError, match="no longer available"):
         reschedule_appointment(db, appointment.id, slots[3].id)

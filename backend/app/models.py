@@ -29,7 +29,6 @@ class Availability(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     start_time: Mapped[datetime] = mapped_column(DateTime, index=True)
     end_time: Mapped[datetime] = mapped_column(DateTime)
-    appointment_type: Mapped[str] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default="available")
 
     appointments: Mapped[list["Appointment"]] = relationship(

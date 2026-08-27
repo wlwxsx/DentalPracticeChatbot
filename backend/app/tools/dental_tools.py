@@ -1,8 +1,8 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.services.patients import create_patient, verify_patient
+from app.services.patients import create_patient, normalize_phone, verify_patient
 from app.services.scheduling import (
     book_appointment,
     book_family_appointments,
@@ -11,7 +11,8 @@ from app.services.scheduling import (
     get_patient_appointments,
     reschedule_appointment,
 )
-from app.services.emergencies import create_emergency_escalation
+from app.models import Patient
+from app.services.emergencies import create_emergency_escalation, notify_staff
 
 FIND_AVAILABLE_SLOTS_TOOL = {
     "type": "function",
@@ -36,16 +37,8 @@ FIND_AVAILABLE_SLOTS_TOOL = {
                     "for example 2026-08-31T23:59:59."
                 ),
             },
-            "appointment_type": {
-                "type": "string",
-                "description": "Appointment type, default is general.",
-            },
         },
-        "required": [
-            "start_date",
-            "end_date",
-            "appointment_type",
-        ],
+        "required": ["start_date", "end_date"],
     },
 }
 
@@ -101,11 +94,21 @@ BOOK_APPOINTMENT_TOOL = {
                     "Internal ID returned by the availability search."
                 ),
             },
+            "appointment_type": {
+                "type": "string",
+                "enum": ["general", "cleaning", "emergency"],
+                "description": "Appointment type requested by the patient.",
+            },
+            "emergency_summary": {
+                "type": "string",
+                "description": "Emergency situation to store in the appointment notes, when applicable.",
+            },
 
         },
         "required": [
             "patient_id",
-            "slot_id"
+            "slot_id",
+            "appointment_type",
         ],
     },
 }
@@ -128,8 +131,12 @@ BOOK_FAMILY_APPOINTMENTS_TOOL = {
                     "properties": {
                         "patient_id": {"type": "integer"},
                         "slot_id": {"type": "integer"},
+                        "appointment_type": {
+                            "type": "string",
+                            "enum": ["general", "cleaning", "emergency"],
+                        },
                     },
-                    "required": ["patient_id", "slot_id"],
+                    "required": ["patient_id", "slot_id", "appointment_type"],
                 },
                 "minItems": 2,
             },
@@ -372,7 +379,6 @@ def run_find_available_slots(
         db=db,
         start_date=datetime.fromisoformat(arguments["start_date"]),
         end_date=datetime.fromisoformat(arguments["end_date"]),
-        appointment_type=arguments["appointment_type"],
     )
 
     return {
@@ -384,7 +390,6 @@ def run_find_available_slots(
                 "date": slot.start_time.date().isoformat(),
                 "start_time": slot.start_time.isoformat(),
                 "end_time": slot.end_time.isoformat(),
-                "appointment_type": slot.appointment_type,
             }
             for slot in slots[:6]
         ],
@@ -437,6 +442,8 @@ def run_book_appointment(
         db=db,
         patient_id=arguments["patient_id"],
         slot_id=arguments["slot_id"],
+        appointment_type=arguments.get("appointment_type", "general"),
+        emergency_summary=arguments.get("emergency_summary"),
     )
 
     return {
@@ -682,16 +689,62 @@ def run_escalate_emergency(
     if contact_phone.lower() == "unknown":
         contact_phone = None
 
+    patient = None
+    if contact_phone:
+        normalized_phone = normalize_phone(contact_phone)
+        patient = (
+            db.query(Patient)
+            .filter(Patient.phone == normalized_phone)
+            .first()
+        )
+
     escalation = create_emergency_escalation(
         db=db,
         summary=arguments["summary"],
+        patient_id=patient.id if patient else None,
         contact_phone=contact_phone,
+    )
+
+    appointment = None
+    appointment_message = "No appointment was booked automatically."
+    if patient is not None:
+        slots = find_available_slots(
+            db=db,
+            start_date=datetime.now(),
+            end_date=datetime.now() + timedelta(days=180),
+        )
+        if slots:
+            appointment = book_appointment(
+                db=db,
+                patient_id=patient.id,
+                slot_id=slots[0].id,
+                appointment_type="emergency",
+                emergency_summary=arguments["summary"],
+            )
+            appointment_message = (
+                "Booked the earliest available emergency appointment for "
+                f"{appointment.slot.start_time.isoformat()}."
+            )
+
+    notification_sent = notify_staff(
+        summary=arguments["summary"],
+        contact_phone=contact_phone,
+        patient=patient,
+        appointment_details=appointment_message,
     )
 
     return {
         "success": True,
         "status": escalation.status,
-        "message": "Dental staff have been notified.",
+        "message": (
+            f"Emergency escalation recorded. "
+            f"{'Staff email sent.' if notification_sent else 'Staff email could not be sent.'} "
+            f"{appointment_message}"
+        ),
+        "notification_sent": notification_sent,
+        "appointment_booked": appointment is not None,
+        "appointment_type": appointment.appointment_type if appointment else None,
+        "appointment_id": appointment.id if appointment else None,
     }
     
 def get_practice_information(topic: str) -> dict:
