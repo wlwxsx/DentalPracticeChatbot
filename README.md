@@ -16,7 +16,9 @@ The prototype supports these workflows:
 * View scheduled appointments
 * Cancel an appointment
 * Reschedule an appointment
+* Book back-to-back appointments for multiple family members atomically
 * Escalate potential dental emergencies to staff
+* Answer practice information questions
 * Maintain context across a multi-turn conversation
 
 ## Technology Stack
@@ -78,7 +80,6 @@ DentalPracticeChatbot/
 │   ├── .env.example
 │   ├── seed.py
 │   ├── app/
-│   │   ├── __init__.py
 │   │   ├── main.py
 │   │   ├── database.py
 │   │   ├── models.py
@@ -182,7 +183,9 @@ The LLM can request the following controlled tools:
 * `book_appointment`
 * `cancel_appointment`
 * `reschedule_appointment`
+* `book_family_appointments`
 * `escalate_emergency`
+* `get_practice_information`
 
 Tool declarations and adapters are kept in `backend/app/tools/dental_tools.py`. The underlying business logic remains in service modules.
 
@@ -423,6 +426,7 @@ POST   /patients
 POST   /patients/verify
 GET    /patients/{patient_id}/appointments
 POST   /appointments
+POST   /family-appointments
 PATCH  /appointments/{appointment_id}/cancel
 PATCH  /appointments/{appointment_id}/reschedule
 POST   /chat
@@ -444,6 +448,11 @@ A returning-patient booking flow looks like this:
 8. The patient explicitly confirms.
 9. The backend books the slot and prevents conflicting bookings.
 10. The chatbot confirms the final date and time.
+
+A family booking flow verifies each family member, finds consecutive
+back-to-back slots, summarizes the complete block, and asks for explicit
+confirmation. The backend books the appointments in one transaction, so a
+failure leaves every slot unchanged.
 
 ## Design Decisions and Rationale
 
@@ -523,7 +532,6 @@ The first priority was completing safe, database-backed appointment workflows. V
 * Staff administration dashboard
 * Email and SMS notifications
 * Calendar-provider integration
-* Family or dependent scheduling
 * Multiple dentists and provider-specific availability
 * Production database migrations
 * Deployment infrastructure
@@ -537,7 +545,7 @@ These items were deferred to keep the prototype focused on the highest-value pat
 * Conversation state depends on provider interaction IDs.
 * The free Gemini tier may return temporary rate-limit errors during repeated testing.
 * Emergency detection uses a conservative phrase list rather than a clinical triage system.
-* Authentication is simulated through phone number and DOB verification.
+* Authentication is simulated through legal name, phone number, and DOB verification.
 * Staff escalations are stored but no staff dashboard or external notification integration is included.
 * The seeded schedule contains synthetic availability rather than a live practice calendar.
 * Times are treated as the dental practice’s local time and do not currently include explicit timezone conversion.
@@ -572,3 +580,20 @@ __pycache__/
 ```
 
 A safe `.env.example` is included so reviewers can configure the application without exposing credentials.
+
+
+## Prioritization and Scope Decisions
+
+This assessment was time-boxed, so I prioritized the workflows that are load-bearing for a safe and useful patient experience: patient registration and verification, finding real availability, booking without double-booking, and cancelling or rescheduling existing appointments. These operations are database-backed and executed through deterministic backend tools. The language model manages the conversation and interprets natural-language requests, but it cannot independently decide that an appointment exists or claim that a database change succeeded.
+
+I prioritized safety-sensitive flows next. Potential emergencies are detected before the normal conversational workflow, appropriate emergency guidance is provided, and an escalation record is created for staff follow-up. Appointment mutations require explicit patient confirmation, and backend validation ensures that the patient, appointment, and slot are valid before any change is committed. Database constraints and transactions protect against concurrent booking conflicts and partial updates. These decisions address the highest-impact failure modes: exposing another patient’s information, fabricating availability, double-booking a slot, changing the wrong appointment, or failing to escalate an urgent situation.
+
+I also prioritized graceful failure handling because external model APIs can be unavailable or rate-limited. Tool results are treated as the source of truth, errors are converted into safe patient-facing responses, and the application avoids reporting success after a failed operation. Patient information and internal identifiers are not intentionally exposed in chatbot responses. In a production deployment, patient authorization would be strengthened with expiring server-managed sessions and one-time phone verification, while logs would exclude personal and health information.
+
+General practice inquiries were implemented using controlled practice information rather than allowing the model to invent policies, prices, addresses, or insurance coverage. The assistant can explain office hours, major insurance acceptance, and options for uninsured patients while directing plan-specific coverage and final pricing questions to staff. Subjective requests such as “tomorrow” or “later next week” are converted into concrete date ranges before querying availability.
+
+Complex family scheduling was treated as an extension of the reliable single-patient workflow. Registration and verification must occur independently for each family member, and back-to-back scheduling requires consecutive-slot searching and an atomic transaction so that either every family appointment succeeds or none do. I prioritized the underlying patient, availability, and booking guarantees before expanding this orchestration. Any portion not completed within the time box is documented as planned work rather than represented as production-ready.
+
+For hundreds of locations and more than 10,000 daily conversations, I would replace the local SQLite database with a managed relational database such as PostgreSQL, associate every record with a practice location, and use transactions and indexes to handle concurrent scheduling safely. I would also introduce distributed session storage, background queues for staff notifications, per-user and per-location rate limiting, structured monitoring without patient data, audit trails for appointment changes, retry and idempotency controls, encrypted storage and transport, backups, and jurisdiction-specific privacy review.
+
+Polished administrative features, advanced insurance integrations, multilingual support, analytics, and fully optimized family scheduling were considered valuable but less critical than completing the core workflow safely. My overall priority was to build a smaller system that performs consequential patient operations reliably, clearly exposes its limitations, and has an architecture that can be strengthened for production rather than a broader demo whose scheduling claims cannot be trusted.
