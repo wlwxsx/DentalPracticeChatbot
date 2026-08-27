@@ -1,0 +1,22 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/services/__pycache__/
+*.pyc
+
+# Local database
+backend/dental_practice.db
+
+# Environment variables
+.env
+backend/.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Editors and OS
+.vscode/
+.DS_Store
+Thumbs.db
